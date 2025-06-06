@@ -27,7 +27,6 @@ DEFAULT_INPUTS = {
     'Debt_to_GDP': 70.0
 }
 
-
 # --- Forex Prediction Model ---
 def predict_fx(inputs: dict) -> float:
     """ Simple regression-like model for forex rate prediction. """
@@ -42,12 +41,10 @@ def predict_fx(inputs: dict) -> float:
     # Prevent zero or negative FX rates
     return round(max(rate, 0.01), 4)
 
-
 # --- Sentiment Analysis ---
 @st.cache_resource
 def get_sentiment_analyzer():
     return SentimentIntensityAnalyzer()
-
 
 def get_sentiment(text: str) -> float:
     """ Returns the compound sentiment score for the input text. """
@@ -58,25 +55,24 @@ def get_sentiment(text: str) -> float:
         score = 0.0
     return score
 
-
 # --- Currency Risk Calculator ---
 def currency_risk(amount: float, volatility: float) -> float:
     """ Estimate maximum currency risk based on amount and expected volatility. """
     max_risk = amount * (volatility / 100)
     return round(max_risk, 2)
 
-
 # --- Historical FX Data ---
 @st.cache_data(show_spinner=False)
 def get_historical_fx_data(symbol="EURUSD=X", period="1y"):
     df = yf.download(symbol, period=period, interval="1d", progress=False)
-    if "Close" in df.columns and not df["Close"].empty:
-        return df["Close"]
-    elif not df.empty:
-        return df.iloc[:, 0]  # Take first column if "Close" is missing
-    else:
-        return pd.Series(dtype='float64')
-
+    # Always return a Series for charting
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        if "Close" in df.columns:
+            return df["Close"]
+        else:
+            # Fall back to the first column if 'Close' is missing
+            return df.iloc[:, 0]
+    return pd.Series(dtype="float64")
 
 # --- Sensitivity Analysis ---
 def sensitivity_analysis(inputs, param, values):
@@ -86,7 +82,6 @@ def sensitivity_analysis(inputs, param, values):
         test_inputs[param] = v
         results.append(predict_fx(test_inputs))
     return results
-
 
 # --- Streamlit App Layout ---
 st.set_page_config(page_title="Forex Simulation App", layout="wide")
@@ -135,7 +130,9 @@ with tabs[0]:
     with col2:
         inputs['US_Interest'] = st.slider("US Interest Rate (%)", 0.0, 15.0, DEFAULT_INPUTS['US_Interest'])
         inputs['US_Inflation'] = st.slider("US Inflation Rate (%)", 0.0, 15.0, DEFAULT_INPUTS['US_Inflation'])
-        inputs['Trade_Balance'] = st.slider(f"{country} Trade Balance (millions)", -10000, 10000, DEFAULT_INPUTS['Trade_Balance'], step=100)
+        inputs['Trade_Balance'] = st.slider(
+            f"{country} Trade Balance (millions)", -10000, 10000, DEFAULT_INPUTS['Trade_Balance'], step=100
+        )
         inputs['Debt_to_GDP'] = st.slider(f"{country} Public Debt to GDP (%)", 0.0, 150.0, DEFAULT_INPUTS['Debt_to_GDP'])
 
     predicted_rate = predict_fx(inputs)
@@ -162,7 +159,13 @@ with tabs[1]:
         st.subheader(f"{selected_pair} - 1 Year Historical Rates")
         hist_data = get_historical_fx_data(hist_symbol)
         if hist_data is not None and not hist_data.empty:
-            st.line_chart(hist_data.rename("FX Rate"))
+            # CORRECTED: Only call .rename("FX Rate") if hist_data is a Series
+            if isinstance(hist_data, pd.Series):
+                st.line_chart(hist_data.rename("FX Rate"))
+            elif isinstance(hist_data, pd.DataFrame) and "Close" in hist_data.columns:
+                st.line_chart(hist_data["Close"].rename("FX Rate"))
+            else:
+                st.line_chart(hist_data)
         else:
             st.warning("Historical data unavailable for this currency pair.")
 
@@ -219,7 +222,9 @@ with tabs[2]:
 with tabs[3]:
     st.header("Sentiment Analysis from Headlines")
     st.markdown("Enter a news headline or tweet about the economy to assess its sentiment impact on forex.")
-    input_text = st.text_input("Paste a news headline or tweet:", "ECB signals continued rate hikes as inflation remains high")
+    input_text = st.text_input(
+        "Paste a news headline or tweet:", "ECB signals continued rate hikes as inflation remains high"
+    )
     if st.button("Analyze Sentiment"):
         score = get_sentiment(input_text)
         st.session_state['sentiments'].append({'Headline': input_text, 'Score': score})
